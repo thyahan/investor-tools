@@ -1,11 +1,15 @@
 import React from 'react';
 import {Input} from 'antd';
+import {ExportOutlined} from '@ant-design/icons';
 import {toNumber} from 'lodash';
-import {asProfitLoss, asPositionSize, asRiskRewardRatio} from './utils';
+import {positionSizingCalculator, toLocalString} from './utils';
+import {toPng} from 'html-to-image';
+import download from 'downloadjs';
 
 type IProps = {};
 
 type IState = {
+  symbol: string;
   stock?: {
     name: string;
     description?: string;
@@ -19,15 +23,9 @@ type IState = {
   };
 };
 
-const toLocalString = (value: number, decimal: number = 0) => {
-  return value.toLocaleString('th-TH', {
-    minimumFractionDigits: decimal,
-    maximumFractionDigits: decimal,
-  });
-};
-
 const PositionSizing: React.FC<IProps> = props => {
   const [state, setState] = React.useState<IState>({
+    symbol: '',
     capital: '',
     risk: '',
     prices: {
@@ -37,7 +35,7 @@ const PositionSizing: React.FC<IProps> = props => {
     },
   });
 
-  const {capital, risk, prices} = state;
+  const {symbol, capital, risk, prices} = state;
 
   const handleOnPriceChange = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setState({
@@ -56,46 +54,51 @@ const PositionSizing: React.FC<IProps> = props => {
     });
   };
 
-  const pricesAsNumber = {
-    entry: toNumber(prices.entry),
-    sl: toNumber(prices.sl),
-    tp: toNumber(prices.tp),
-  };
+  const positionSize = positionSizingCalculator(state);
 
-  const positionSize = Math.round(asPositionSize(toNumber(risk), pricesAsNumber));
-
-  const riskRewardRatio = asRiskRewardRatio(pricesAsNumber);
-
-  const riskPercent = (toNumber(risk) / toNumber(capital)) * 100 || 0;
-
-  const [posibleProfit, posibleLose] = asProfitLoss(positionSize, pricesAsNumber);
+  const {entry, sl, tp} = positionSize;
 
   const results = [
     {
+      title: 'Stock Symbol',
+      value: <span className="font-bold">{symbol}</span>,
+    },
+    {
+      title: 'Entry/SL/TP',
+      value: `${toLocalString(entry, 2)}/${toLocalString(sl, 2)}/${toLocalString(tp, 2)}`,
+    },
+    {
       title: 'Risk Reward Ratio',
       value: (
-        <>
+        <span className="font-bold">
           <span className="text-gray-300">RR:1/</span>
-          {`${toLocalString(riskRewardRatio)}`}
-        </>
+          {`${toLocalString(positionSize.riskRewardRatio)}`}
+        </span>
       ),
     },
     {
-      title: 'Loss/Profit',
+      title: `Loss / Profit (Single stock)`,
+      value: <span>{`${toLocalString(positionSize.slPoint, 2)} / ${toLocalString(positionSize.tpPoint, 2)}`}</span>,
+    },
+    {
+      title: `Loss / Profit`,
       value: (
         <>
-          <span className="text-red-500">{toLocalString(posibleLose)}</span> /{' '}
-          <span className="text-green-500">{toLocalString(posibleProfit)}</span>
+          <span>{toLocalString(positionSize.loss)}</span> / <span>{toLocalString(positionSize.profit)}</span>
         </>
       ),
     },
     {
       title: '% Risk',
-      value: `${riskPercent.toFixed(2)}%`,
+      value: `${toLocalString(positionSize.riskPercent, 2)}%`,
     },
     {
-      title: 'Position Size',
-      value: toLocalString(positionSize),
+      title: 'Position volume',
+      value: toLocalString(positionSize.volume),
+    },
+    {
+      title: 'Position amount',
+      value: <span className="font-bold">{toLocalString(positionSize.amount, 2)}</span>,
     },
   ];
 
@@ -104,6 +107,19 @@ const PositionSizing: React.FC<IProps> = props => {
     inputmode: 'decimal',
     type: 'text',
     autoComplete: 'on',
+  };
+
+  const renderSaveImage = () => {
+    return (
+      <ExportOutlined
+        onClick={() => {
+          const elem = document.getElementById('img-card');
+          const date = new Date();
+          const filename = date.getFullYear() + date.getMonth() + date.getDate() + date.getTime() + '.png';
+          toPng(elem).then(data => download(data, filename));
+        }}
+      />
+    );
   };
 
   const renderCapitalForm = () => {
@@ -180,13 +196,35 @@ const PositionSizing: React.FC<IProps> = props => {
     );
   };
 
+  const renderSymbol = () => {
+    return (
+      <div className="w-full flex felx-col md:w-3/4 p-4 mb-4 border border-gray-200 rounded-sm shadow-md">
+        <label className="p-1 w-full sm:w:1/2 md:w-1/3" htmlFor="symbol">
+          <span className="font-bold">Stock Symbol</span>
+          <Input
+            {...{
+              ...inputProps,
+              id: 'symbol',
+              value: symbol,
+              placeholder: 'Stock symbol',
+              onChange: (e: any) => setState({...state, symbol: e.target.value.toUpperCase()}),
+            }}
+          />
+        </label>
+      </div>
+    );
+  };
+
   const renderRR = () => {
     return (
-      <div className="w-full text-base md:w-3/4 p-4 border border-gray-200 rounded-sm shadow-md flex flex-wrap">
+      <div
+        id="img-card"
+        className="w-full bg-white text-base md:w-3/4 p-4 border border-gray-200 rounded-sm shadow-md flex flex-wrap">
+        <div className="w-full text-right">{renderSaveImage()}</div>
         {results.map(({title, value}: any) => (
-          <div className="flex flex-col p-4 w-1/2 md:1/4">
-            <p className="text-gray-500 mb-4">{title}</p>
-            <p className="font-bold text-2xl">{value}</p>
+          <div className={`w-full flex px-2 mb-1`}>
+            <p className="text-gray-500 mb-1 w-1/2 text-right pr-4">{title}</p>
+            <p className="">{value}</p>
           </div>
         ))}
       </div>
@@ -197,6 +235,7 @@ const PositionSizing: React.FC<IProps> = props => {
     <div className="w-full p-4 md:flex md:flex-col md:items-center">
       <h1 className="text-xl mb-2 font-bold">Position Sizing</h1>
       {renderCapitalForm()}
+      {renderSymbol()}
       {renderPriceForm()}
       {renderRR()}
     </div>

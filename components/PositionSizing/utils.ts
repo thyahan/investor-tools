@@ -1,20 +1,51 @@
-interface IPrices {
-  entry: number;
-  tp: number;
-  sl: number;
-}
+import {toNumber} from 'lodash';
 
-export function asRiskRewardRatio({entry = 0, tp = 0, sl = 0}: IPrices): number {
-  return (tp - entry) / (entry - sl) || 0;
-}
+type IState = {
+  risk: string;
+  capital: string;
+  prices: {
+    entry: string;
+    tp: string;
+    sl: string;
+  };
+};
 
-export function asProfitLoss(positionAmount: number, {entry = 0, tp = 0, sl = 0}: IPrices): number[] {
-  return [(tp - entry) * positionAmount || 0, (entry - sl) * positionAmount || 0];
-}
+export const toLocalString = (value: number, decimal: number = 0) => {
+  return value.toLocaleString('th-TH', {
+    minimumFractionDigits: decimal,
+    maximumFractionDigits: decimal,
+  });
+};
 
-export function asPositionSize(risk: number, {entry = 0, tp = 0, sl = 0}: IPrices): number {
-  const riskPerStock = entry - sl;
-  const stockAmount = risk / riskPerStock;
+export function positionSizingCalculator(state: IState) {
+  const stateAsNumber = {
+    risk: toNumber(state.risk),
+    capital: toNumber(state.capital),
+    prices: {
+      entry: toNumber(state.prices.entry),
+      tp: toNumber(state.prices.tp),
+      sl: toNumber(state.prices.sl),
+    },
+  };
 
-  return stockAmount || 0;
+  const {risk, capital, prices} = stateAsNumber;
+
+  const slPoint = Math.abs(prices.entry - prices.sl) || 0;
+  const tpPoint = Math.abs(prices.tp - prices.sl) || 0;
+
+  const riskRewardRatio = tpPoint / slPoint || 0;
+  const riskPercent = (risk / capital) * 100 || 0;
+  const volume = risk / slPoint || 0;
+
+  return {
+    ...prices,
+    slPoint,
+    tpPoint,
+    riskRewardRatio,
+    riskPercent,
+    volume,
+    amount: volume * prices.entry || 0,
+    profit: volume * tpPoint || 0,
+    loss: volume * slPoint || 0,
+  };
 }
